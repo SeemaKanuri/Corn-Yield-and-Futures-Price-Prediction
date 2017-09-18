@@ -1,0 +1,205 @@
+---
+title: "CornFuturePrice-Model"
+author: "Seema Rani Kanuri"
+date: "September 13, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+Monthly_Average_Ratio <-read.csv('D:\\AgReliant\\CropData\\Features\\Monthly_Average_Ratio.csv')
+str(Monthly_Average_Ratio)
+Monthly_Average_Ratio <- subset(Monthly_Average_Ratio, , -c(X))
+```
+
+```{r}
+FutureStMillionbushels <-read.csv('D:\\AgReliant\\CropData\\InputData\\Feed_Grains_Excel_stocks.csv')
+#iconv(names(FutureStMillionbushels), to='ASCII', sub='')
+#FutureStMillionbushels$year <- FutureStMillionbushels$ï..year
+names(FutureStMillionbushels) <- gsub("..", "", names(FutureStMillionbushels), fixed = TRUE)
+names(FutureStMillionbushels) <- gsub("ï", "", names(FutureStMillionbushels), fixed = TRUE)
+
+```
+
+
+```{r}
+head(FutureStMillionbushels)
+```
+
+```{r}
+StockFuture <- subset(FutureStMillionbushels, select=c("year","data_type","value"))
+
+```
+
+# Add a new feature: fraction of annual corn supply that is in stockpiles
+# at the beginning of each year (possibly associated with decrease in
+# corn futures price?)
+```{r}
+
+
+library("reshape2") # for dcast()
+StockFuture <- dcast(StockFuture, year ~ data_type,  value.var = "value")
+```
+
+
+```{r}
+colnames(StockFuture) <- c('year', 'beginning_stocks', 'total_domestic_use', 'total_supply')
+fraction_stockpiled <- as.numeric(StockFuture$beginning_stocks) / as.numeric(StockFuture$total_supply)
+avg_fraction_stockpiled <- mean(fraction_stockpiled)
+StockFuture[, 'fraction_stockpiled'] <- fraction_stockpiled
+StockFuture <- subset(StockFuture, select = +c(year, fraction_stockpiled))
+```
+
+```{r}
+Merge_output_df6 <- merge(x = Monthly_Average_Ratio, y = StockFuture, by = c('year'))
+#write.csv(Merge_output_df6,'D:\\AgReliant\\CropData\\Merge_output_df6.csv',row.names=FALSE)
+
+```
+
+# Modeling to predict the Corn Future price 
+
+```{r}
+library(caret)
+input11 = read.csv('D:\\AgReliant\\CropData\\Features\\Merge_output_df5.csv')
+input12 = Merge_output_df6
+
+df <- merge(x = input12, y = input11, by = c('year'))
+
+vc = seq(1975,2016, by=1)
+vc_test = seq(2017,2017, by=1)
+
+input_df_c <- df[df$year %in% vc,]
+test_c <- df[df$year %in% vc_test,]
+
+```
+
+
+```{r}
+
+split_c<-createDataPartition(y = input_df_c$price_per_bushel_december, p = 0.8, list = FALSE)
+
+dev_c<-input_df_c[split_c,]
+val_c<-input_df_c[-split_c,]
+
+```
+
+#Model Building and Tuning:
+```{r}
+
+lmFit_c <- train(price_per_bushel_december ~ ., data = dev_c, method = "rf")
+summary(lmFit_c)
+
+```
+
+#Another useful function would be "trainControl" which allows for estimation of parameter coefficients through resampling methods
+#like cross validation, boosting etc.
+```{r}
+
+ctrl_c <-trainControl(method = "cv" ,number = 10)
+lmCVFit_c <-train(price_per_bushel_december ~ ., data = input_df_c, method = "rf", trControl = ctrl_c, metric= "Rsquared")
+summary(lmCVFit_c)
+
+```
+
+
+#Model Performance
+
+```{r}
+
+residuals_c<-resid(lmFit_c)
+predictedValues_c<-predict(lmFit_c)
+plot(dev_c$price_per_bushel_december,residuals_c)
+abline(0,0)
+plot(dev_c$price_per_bushel_december,predictedValues_c)
+```
+
+#function "defaultSummary" can be used which in this example returns the values of R-squared and RMSE metrics.
+```{r}
+predictedval_c<-predict(lmFit_c,val_c)
+modelvalues_c<-data.frame(obs = val_c$price_per_bushel_december, pred=predictedval_c)
+defaultSummary(modelvalues_c)
+```
+
+```{r}
+
+predictedval_c_cv<-predict(lmCVFit_c,val_c)
+modelvalues_c_cv<-data.frame(obs = val_c$price_per_bushel_december, pred=predictedval_c_cv)
+defaultSummary(modelvalues_c_cv)
+```
+
+
+# Model 2
+
+```{r}
+
+#install.packages("rpart")
+library(rpart)
+rpart.model <- rpart(price_per_bushel_december ~ .,data = input_df_c, method = "anova")
+rpart.model
+cost_dec <- predict(rpart.model, test_c)
+modelvalues_c17<-data.frame(value=c("price_per_bushel_december"), year = test_c$year, pred=cost_dec*100)
+#modelvalues_c17 <- rbind(modelvalues_c17, data.frame(value=c("price_per_bushel_december in Millions"), year = test_c$year, pred=cost_dec*1000000))
+
+```
+
+
+#simimarly we can check for price_per_bushel_november, price_per_bushel_october ,price_per_bushel_september
+```{r}
+rpart.model1 <- rpart(price_per_bushel_november ~ .,data = input_df_c, method = "anova")
+rpart.model1
+cost_nov <- predict(rpart.model1, test_c)
+modelvalues_c17<- rbind(modelvalues_c17, data.frame(value=c("price_per_bushel_november"), year = test_c$year, pred=cost_nov*100))
+
+```
+
+```{r}
+
+rpart.model2 <- rpart(price_per_bushel_october ~ .,data = input_df_c, method = "anova")
+rpart.model2
+cost_oct <- predict(rpart.model2, test_c)
+modelvalues_c17<- rbind(modelvalues_c17, data.frame(value=c("price_per_bushel_october"), year = test_c$year, pred=cost_oct*100))
+
+
+```
+
+
+```{r}
+
+rpart.model3 <- rpart(price_per_bushel_september ~ .,data = input_df_c, method = "anova")
+rpart.model3
+
+```
+
+```{r}
+cost_sep <- predict(rpart.model3, test_c)
+modelvalues_c17<- rbind(modelvalues_c17, data.frame(value=c("price_per_bushel_september"), year = test_c$year, pred=cost_sep*100))
+
+modelvalues_c17
+```
+
+#The average price of corn per bushel in  September, October , November , December The prices shown are in units of USD so 3.622 means 362.2 cents per Bushel.All the future Price tables outstanding contracts open/closed interest are shown in cents per Bu
+
+
+
+#References
+
+##Data
+
+###All the data used below is been downaloaded from open source like ;
+### Monthly temperature, precipitation ; ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/ ;   https://data.ers.usda.gov/FEED-GRAINS-custom-query.aspx
+###Planting progress ;  https://quickstats.nass.usda.gov/results/0D72DC4F-11B7-35DE-A5B1-D6AA348291F4
+###continuous corn futures index ;   https://www.quandl.com/data/CHRIS/CME_C1-Corn-Futures-Continuous-Contract-1-C1-Front-Month
+### BBeginning-of-year corn grain stockpiles ; https://data.ers.usda.gov/FEED-GRAINS-custom-query.aspx#ResultsPanel
+###Palmer drought severity index definition ; ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-pdsist-v1.0.0-20170906
+
+
+##Model Implementation
+###https://www.analyticsvidhya.com/blog/2014/12/caret-package-stop-solution-building-predictive-models/
+###https://www.analyticsvidhya.com/blog/2016/03/practical-guide-principal-component-analysis-python/
+###https://www.analyticsvidhya.com/blog/2016/02/complete-tutorial-learn-data-science-scratch/
+###http://mindymallory.github.io/PriceAnalysis/commodity-price-analysis-and-forecasting.html 

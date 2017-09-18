@@ -1,0 +1,453 @@
+---
+title: "MyDataPreparation and Modelling for Yeild Prediction"
+author: "Seema Rani Kanuri"
+date: "September 13, 2017"
+output: html_document
+---
+
+## Loading the data
+
+```{r cars}
+PalmerDrought <-read.csv('D:\\AgReliant\\CropData\\InputData\\PalmerDrought.csv')
+MaximumTemp <-read.csv('D:\\AgReliant\\CropData\\InputData\\MaximumTemp.csv')
+```
+
+## Convert features to binary indicators from the Palmer Drought Severity Index 
+## which signify whether water availability was extreme (either drought or flood) in each month
+##indicating whether they are severe (absolute value greater than 3)
+
+
+#The Palmer Drought Severity Index (PDSI) uses readily available temperature and precipitation data to estimate relative dryness. It is a standardized index that spans -10 (dry) to +10 (wet).
+
+```{r pressure, echo=FALSE}
+colnames(PalmerDrought) <- c('state_id', 'division_id', 'data_type', 'year', 'pdsi_january', 'pdsi_february',
+                       'pdsi_march', 'pdsi_april', 'pdsi_may', 'pdsi_june', 'pdsi_july', 'pdsi_august', 'pdsi_september',
+                       'pdsi_october', 'pdsi_november', 'pdsi_december')
+```
+
+
+```{r}
+features <- c('pdsi_january', 'pdsi_february', 'pdsi_march', 'pdsi_april', 'pdsi_may', 'pdsi_june',
+              'pdsi_july', 'pdsi_august', 'pdsi_september', 'pdsi_october', 'pdsi_november', 'pdsi_december')
+
+for (i in 1:length(features)) {
+  PalmerDrought[, features[i]] <- as.numeric(abs(PalmerDrought[, features[i]]) > 3)
+}
+
+```
+
+
+```{r}
+colnames(MaximumTemp) <- c('state_id', 'division_id', 'data_type', 'year', 'max_temp_january', 'max_temp_february',
+                           'max_temp_march', 'max_temp_april', 'max_temp_may', 'max_temp_june', 'max_temp_july', 'max_temp_august',
+                           'max_temp_september', 'max_temp_october', 'max_temp_november', 'max_temp_december')
+```
+
+
+```{r}
+PalmerDrought <- subset(PalmerDrought, select = -c(division_id, data_type))
+MaximumTemp <- subset(MaximumTemp, select = -c(division_id, data_type))
+Merge_output_df <- merge(x = PalmerDrought, y = MaximumTemp, by = c('state_id', 'year'))
+
+#write.csv(Merge_output_df,'D:\\AgReliant\\CropData\\Merge_output_df.csv',row.names=FALSE)
+```
+
+
+```{r}
+Precipitation <-read.csv('D:\\AgReliant\\CropData\\InputData\\Precipitation.csv')
+AverageTemp <-read.csv('D:\\AgReliant\\CropData\\InputData\\AverageTemp.csv')
+
+```
+
+# Rename columns of the precipitation input file and drop unneeded columns
+```{r}
+
+colnames(Precipitation) <- c('state_id', 'division_id', 'data_type', 'year', 'precip_january', 'precip_february',
+                         'precip_march', 'precip_april', 'precip_may', 'precip_june', 'precip_july', 'precip_august', 'precip_september',
+                         'precip_october', 'precip_november', 'precip_december')
+Precipitation <- subset(Precipitation, select = -c(division_id, data_type))
+```
+
+
+# Rename columns of the mean temperature input file and drop unneeded columns
+```{r}
+
+colnames(AverageTemp) <- c('state_id', 'division_id', 'data_type', 'year', 'mean_temp_january', 'mean_temp_february',
+                            'mean_temp_march', 'mean_temp_april', 'mean_temp_may', 'mean_temp_june', 'mean_temp_july', 'mean_temp_august',
+                            'mean_temp_september', 'mean_temp_october', 'mean_temp_november', 'mean_temp_december')
+AverageTemp <- subset(AverageTemp, select = -c(division_id, data_type))
+```
+
+
+```{r}
+
+# Add features to reflect the non-linear effects of precipitation
+Precipitation$precip_january_sq <- Precipitation$precip_january ^2
+Precipitation$precip_february_sq <- Precipitation$precip_february ^2
+Precipitation$precip_march_sq <- Precipitation$precip_march ^2
+Precipitation$precip_april_sq <- Precipitation$precip_april ^2
+Precipitation$precip_may_sq <- Precipitation$precip_may ^2
+Precipitation$precip_june_sq <- Precipitation$precip_june ^2
+Precipitation$precip_july_sq <- Precipitation$precip_july ^2
+Precipitation$precip_august_sq <- Precipitation$precip_august ^2
+Precipitation$precip_september_sq <- Precipitation$precip_september ^2
+Precipitation$precip_october_sq <- Precipitation$precip_october ^2
+Precipitation$precip_november_sq <- Precipitation$precip_november ^2
+Precipitation$precip_december_sq <- Precipitation$precip_december ^2
+
+```
+
+# Inner join these two datasets by state id and year
+```{r}
+Merge_output_df2 <- merge(x = Precipitation, y = AverageTemp, by = c('state_id', 'year'))
+#write.csv(Merge_output_df2,'D:\\AgReliant\\CropData\\Merge_output_df2.csv',row.names=FALSE)
+```
+
+```{r}
+YieldofCorn <-read.csv('D:\\AgReliant\\CropData\\InputData\\YieldofCorn.csv')
+weather_Cond <- Merge_output_df2
+
+```
+
+#In the dataset there is a term Forecast along with the datapoint, so removing it
+```{r}
+library("reshape2") 
+YieldofCorn <- split(YieldofCorn, YieldofCorn$Period)[[1]]
+
+```
+
+
+# From the article Ranking Of States That Produce The Most Corn" source : http://beef2live.com/story-states-produce-corn-0-107129
+
+## Taking only the top 8 states produced the most corn in the United States 
+```{r}
+
+states_to_retain = c("IOWA", "ILLINOIS", "NEBRASKA", "MINNESOTA", "INDIANA",
+                     "SOUTH DAKOTA", "OHIO", "MISSOURI")
+YieldofCorn = YieldofCorn[YieldofCorn$State %in% states_to_retain, ]
+```
+
+```{r}
+YieldofCorn$Data.Item <- as.factor(YieldofCorn$Data.Item)
+levels(YieldofCorn$Data.Item) <- c("grain_acres", "grain_bushels", "silage_acres", "silage_tons")
+YieldofCorn <- dcast(YieldofCorn, Year + State + state_id ~ Data.Item, value.var = "Value")
+```
+
+
+# Add yield feature and remove any rows where it is undefined
+```{r}
+YieldofCorn$yield <- YieldofCorn$grain_bushels / YieldofCorn$grain_acres
+YieldofCorn <- YieldofCorn[!is.na(YieldofCorn$yield), ]
+```
+
+# Remove the unused silage-related fields (focus on corn grain only)
+```{r}
+YieldofCorn <- YieldofCorn[, c("State", "state_id", "Year", "yield", "grain_acres", "grain_bushels")]
+colnames(YieldofCorn) <-c("state", "state_id", "year", "yield", "grain_acres", "grain_bushels")
+```
+
+```{r}
+# Inner join with precipitation and mean temp (weather) data frame
+Merge_output_df3 <- merge(x = YieldofCorn, y = weather_Cond, by = c('state_id', 'year'))
+#write.csv(Merge_output_df3,'D:\\AgReliant\\CropData\\Merge_output_df3.csv',row.names=FALSE)
+```
+
+
+```{r}
+PlantingProgressData <-read.csv('D:\\AgReliant\\CropData\\InputData\\PlantingProgressData.csv')
+weather_Cond_adv <- Merge_output_df3
+```
+
+```{r}
+PlantingProgressData <- dcast(PlantingProgressData, Year + State + state_id ~ Period,  value.var = "Value")
+```
+
+# Fill in missing weeks from beginning/end of planting season
+##For the weeks whose planting progress data is not  : Substituted with the values based on comparing with the minimum and maximum value, usual planting dates are April-May (Week 17 onwards) 
+
+```{r}
+for (i in 1:nrow(PlantingProgressData)) {
+  my_weeks <- PlantingProgressData[i, 4:24] # Ignore year, state name, and state id fields
+  reported_weeks <- which(!is.na(my_weeks))
+  earliest_reported <- min(reported_weeks)
+  latest_reported <- max(reported_weeks)
+  if (earliest_reported > 1) {
+    my_weeks[1:(earliest_reported - 1)] <- 0
+  }
+  if (latest_reported < 21) {
+    my_weeks[(latest_reported + 1):21] <- 100
+  }
+  PlantingProgressData[i, 4:24] <- my_weeks
+}
+
+```
+
+
+# Rename columns of the planting progress dataframe
+```{r}
+colnames(PlantingProgressData) <- c("year", "state", "state_id", "progress8", "progress9", "progress10",
+                           "progress11", "progress12", "progress13", "progress14", "progress15",
+                           "progress16", "progress17", "progress18", "progress19", "progress20",
+                           "progress21", "progress22", "progress23", "progress24", "progress25",
+                           "progress26", "progress27", "progress28")
+
+```
+
+# Drop state columns; hold onto numeric fields only
+```{r}
+PlantingProgressData <- subset(PlantingProgressData, select = -c(state))
+#weather_Cond_adv <- subset(weather_Cond_adv, select = -c(state))
+```
+
+# Inner join the weather and planting progress data frames
+```{r}
+Merge_output_df4 <- merge(x = weather_Cond_adv, y = PlantingProgressData, by = c('state_id', 'year'), all.x = TRUE)
+Merge_output_df4 <- Merge_output_df4[Merge_output_df4$year >= 1975, ]
+```
+
+# Fill in missing weekly planting progress values in the years with averages
+```{r}
+progress_available <- Merge_output_df4[!is.na(Merge_output_df4$progress8), ]
+progress_available <- subset(progress_available, select = +c(progress8, progress9, progress10,
+                                                             progress11, progress12, progress13, progress14, progress15, progress16, progress17,
+                                                             progress18, progress19, progress20, progress21, progress22, progress23, progress24,
+                                                             progress25, progress26, progress27, progress28))
+progress_averages <- colMeans(progress_available, na.rm = TRUE)
+progress_fields <- c('progress8', 'progress9', 'progress10', 'progress11', 'progress12',
+                     'progress13', 'progress14', 'progress15', 'progress16', 'progress17', 'progress18',
+                     'progress19', 'progress20', 'progress21', 'progress22', 'progress23', 'progress24',
+                     'progress25', 'progress26', 'progress27', 'progress28')
+for (i in 1:length(progress_fields)) {
+  Merge_output_df4[is.na(Merge_output_df4[, progress_fields[i]]), progress_fields[i]] <- progress_averages[i]
+}
+#write.csv(Merge_output_df4,'D:\\AgReliant\\CropData\\Merge_output_df4.csv',row.names=FALSE)
+```
+
+# Merge both sets of corn and weather info
+```{r}
+yield_and_weather_data <- merge(x = Merge_output_df4, y = Merge_output_df, by = c('state_id', 'year'))
+```
+
+# Perform the acreage-weighted average of most features (sum of acres and bushels)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+my_cols <- colnames(yield_and_weather_data)
+years <- unique(yield_and_weather_data$year)
+weighted <- matrix(data = 0, nrow = length(years), ncol = length(my_cols), byrow = FALSE)
+for (i in 1:length(years)) {
+  my_states <- yield_and_weather_data[yield_and_weather_data$year == years[i], ]
+  
+  for (j in 1:length(my_cols)) {
+    if ((my_cols[j] == 'grain_acres') | (my_cols[j] == 'grain_bushels')) {
+      weighted[i, j] <- sum(my_states[, j], na.rm = TRUE)
+    } else {
+      usable_rows <- which(!is.na(my_states[, j]))
+      weighted[i, j] <- sum(my_states[usable_rows, j] * my_states$grain_acres[usable_rows]) /
+        sum(my_states$grain_acres[usable_rows])
+    }
+  } 
+}
+```
+
+
+```{r}
+Merge_output_df5 <- data.frame(weighted)
+colnames(Merge_output_df5) <- my_cols
+Merge_output_df5 <- subset(Merge_output_df5, select = -c(state_id, state)) # now meaningless
+write.csv(Merge_output_df5,'D:\\AgReliant\\CropData\\Features\\Merge_output_df5.csv',row.names=FALSE)
+```
+
+#Modeling
+
+#Corn Yield Prediction
+
+```{r}
+library(caret)
+
+```
+
+#Data Loading and Splitting:
+```{r}
+
+featuresData <- Merge_output_df5
+split<-createDataPartition(y = featuresData$yield, p = 0.8, list = FALSE)
+
+dev<-featuresData[split,]
+val<-featuresData[-split,]
+
+```
+
+#Model Building and Tuning:
+```{r}
+lmFit <- train(yield ~ ., data = dev, method = "rf")
+summary(lmFit)
+```
+
+```{r}
+plot(lmFit)
+```
+
+#Another useful function would be "trainControl" which allows for estimation of parameter coefficients through resampling methods
+#like cross validation, boosting etc.
+```{r}
+ctrl<-trainControl(method = "cv" ,number = 10)
+lmCVFit<-train(yield ~ ., data = featuresData, method = "rf", trControl = ctrl, metric= "Rsquared")
+summary(lmCVFit)
+```
+```{r}
+plot(lmCVFit)
+```
+
+#Model Diagnostics and Scoring:
+```{r}
+residuals<-resid(lmFit)
+predictedValues<-predict(lmFit)
+plot(dev$yield,residuals)
+abline(0,0)
+plot(dev$yield,predictedValues)
+```
+
+#function "defaultSummary" can be used which in this example returns the values of R-squared and RMSE metrics
+```{r}
+predictedVal<-predict(lmFit,val)
+modelvalues<-data.frame(obs = val$yield, pred=predictedVal)
+defaultSummary(modelvalues)
+```
+
+```{r}
+predictedVal_cv<-predict(lmCVFit,val)
+modelvalues_cv<-data.frame(obs = val$yield, pred=predictedVal_cv)
+defaultSummary(modelvalues_cv)
+```
+
+#Lets predict the yeild for the year 2018
+```{r}
+testyear = tail(featuresData, 10)
+myNumCols <- which(unlist(lapply(testyear, is.numeric)))
+testyear[(nrow(testyear) + 1), myNumCols] <- colMeans(testyear[, myNumCols], na.rm=TRUE)
+testyear$year[testyear$year == 2012.5] <- 2018
+test = tail(testyear, 1)
+```
+
+#SO im assuming and taking the average values for the last 10 years to determine the average temp from Jan to Dec, Precipation from Jan to dec 
+#is approximately same as the average of last 10 years 
+
+```{r}
+predictedVal_2018<-predict(lmCVFit,test)
+modelvalues_2018<-data.frame(value=c("yeild for the year 2018"), year = test$year, pred=predictedVal_2018)
+modelvalues_2018
+```
+
+
+#Model 2
+
+
+## Initialization
+
+First, we will create three splits for train/test/valid independent data sets.We will train a data set on one set and use the others to test the validity of model by ensuring that it can predict accurately on data the model has not been shown.
+
+
+```{r}
+train.data <- featuresData[,c(2, 1, 3:85)]
+test.data <- test[,c(2, 1, 3:85)]
+
+```
+
+## Setting Up and Connecting to a H2O Cluster
+
+Let’s first load some packages
+
+```{r}
+# H2O is an R package
+library(h2o)
+
+# Create an H2O cloud 
+h20package<-h2o.init(
+  nthreads=-1,            #use available threads
+  max_mem_size = "16G")   # specify the memory size for the H2O cloud
+
+h2o.removeAll() ## clean slate - just in case the cluster was already running
+
+```
+
+
+
+## Run our predictive model, Training a h2o Deep Learning Model
+## Deep learning algorithm in h2o for prediction
+
+
+##  View information about the model.
+Keys to look for are validation performance and variable importance
+
+
+```{r}
+train_h2o <- as.h2o(train.data)
+test_h2o  <- as.h2o(test.data)
+#Set timer:
+timer <- proc.time()
+
+system.time(
+dlearning.model <- h2o.randomForest(
+                                  x=2:(ncol(train_h2o)-1),
+                                  y=1,
+                                  training_frame = train_h2o,
+                                  ntrees = 600,
+                                  max_depth = 25,
+                                  sample_rate = 0.95
+                                  )
+)
+
+```
+```{r}
+h2o.performance(dlearning.model)
+
+```
+## Using the model for prediction
+
+## Generate the submission.
+```{r}
+predict.dl3 <- as.data.frame(h2o.predict(dlearning.model, test_h2o))
+
+```
+```{r}
+modelvalues_2018_rf <-data.frame(value=c("yeild for the year 2018"), year = test.data$year, pred=predict.dl3)
+modelvalues_2018_rf
+```
+
+### All done, shutdown H2O    
+
+```{r}
+h2o.shutdown(prompt=FALSE)
+```
+
+
+## Resources
+
+[Deep Learning with H2O](https://www.r-bloggers.com/things-to-try-after-user-part-1-deep-learning-with-h2o/)
+[Package ‘h2o’](https://cran.r-project.org/web/packages/h2o/h2o.pdf)
+[h2o-tutorials](https://github.com/h2oai/h2o-tutorials/tree/master/tutorials/deeplearning)
+```{r}
+
+
+```
+
+
+#References
+
+##Data
+
+###All the data used below is been downaloaded from open source like ;
+### Monthly temperature, precipitation ; ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/ ;   https://data.ers.usda.gov/FEED-GRAINS-custom-query.aspx
+###Planting progress ;  https://quickstats.nass.usda.gov/results/0D72DC4F-11B7-35DE-A5B1-D6AA348291F4
+###continuous corn futures index ;   https://www.quandl.com/data/CHRIS/CME_C1-Corn-Futures-Continuous-Contract-1-C1-Front-Month
+### BBeginning-of-year corn grain stockpiles ; https://data.ers.usda.gov/FEED-GRAINS-custom-query.aspx#ResultsPanel
+###Palmer drought severity index definition ; ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-pdsist-v1.0.0-20170906
+
+
+##Model Implementation
+###https://www.analyticsvidhya.com/blog/2014/12/caret-package-stop-solution-building-predictive-models/
+###https://www.analyticsvidhya.com/blog/2016/03/practical-guide-principal-component-analysis-python/
+###https://www.analyticsvidhya.com/blog/2016/02/complete-tutorial-learn-data-science-scratch/
+###http://mindymallory.github.io/PriceAnalysis/commodity-price-analysis-and-forecasting.html 
